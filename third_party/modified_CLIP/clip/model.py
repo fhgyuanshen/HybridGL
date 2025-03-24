@@ -217,25 +217,18 @@ class ResidualAttentionBlock(nn.Module):
         self.attn_mask = attn_mask
 
 
-    def attention(self, x: torch.Tensor, x_k: torch.Tensor = None, x_v: torch.Tensor = None, attn_mask=None, attn_weights=None, need_weights=False,extra_V=None,need_extra_V=False):
+    def attention(self, x: torch.Tensor, attn_mask=None):
         self.attn_mask = self.attn_mask.to(dtype=x.dtype, device=x.device) if self.attn_mask is not None else None
-        if x_k is None and x_v is None:
-            # if attn_weights is not None:
-            #     return self.attn(x, x, x, need_weights=need_weights, attn_mask=attn_mask, attn_weights=attn_weights)[0]
-            if need_weights or need_extra_V:#屎山代码的根，待完善
-                return self.attn(x, x, x, need_weights=need_weights,attn_weights=attn_weights,attn_mask=attn_mask,need_extra_V=need_extra_V)
-            if self.attn_mask is not None or attn_mask is None:
-                # print('self.attn_mask is ',self.attn_mask)
-                return self.attn(x, x, x, need_weights=need_weights, attn_mask=self.attn_mask,attn_weights=attn_weights)[0] # original
-            if attn_mask is not None:
-                # print('attn_mask is ',attn_mask)
-                return self.attn(x, x, x, need_weights=need_weights, attn_mask=attn_mask,attn_weights=attn_weights)[0] 
-            # return self.attn(x, x, x, need_weights=False, attn_mask=attn_mask)[0]
-            # return self.attn(x, x, x, need_weights=False, attn_mask=self.attn_mask) # output, attn_weights[1,77,77]
-        elif x_k is not None and x_v is not None:
-            return self.attn(x, x_k, x_v, need_weights=need_weights, attn_mask=attn_mask,attn_weights=attn_weights)[0]
         
-        
+        if self.attn_mask is not None or attn_mask is None:
+            # print('self.attn_mask is ',self.attn_mask)
+            return self.attn(x, x, x, need_weights=False, attn_mask=self.attn_mask)[0] # original
+        if attn_mask is not None:
+            # print('attn_mask is ',attn_mask)
+            return self.attn(x, x, x, need_weights=False, attn_mask=attn_mask)[0] 
+        # return self.attn(x, x, x, need_weights=False, attn_mask=attn_mask)[0]
+        # return self.attn(x, x, x, need_weights=False, attn_mask=self.attn_mask) # output, attn_weights[1,77,77]
+
     # def save_attn(self, attn):
     #     self.attn_map = attn
     #
@@ -248,7 +241,7 @@ class ResidualAttentionBlock(nn.Module):
     # def get_attn_gradients(self):
     #     return self.attn_map_gradients
 
-    def forward(self, x: torch.Tensor, x_k: torch.Tensor = None, x_v: torch.Tensor = None, attn_mask=None, attn_weights=None, need_weights=False):
+    def forward(self, x: torch.Tensor, attn_mask=None):
         # 12 layers
         # modified to get attn weights
         # if type(x) == tuple:
@@ -258,27 +251,10 @@ class ResidualAttentionBlock(nn.Module):
         #
         # x = x + output
         #
-        if x_k is not None and x_v is not None:
-            x = x + self.attention(self.ln_1(x), self.ln_1(x_k), self.ln_1(x_v), attn_mask=attn_mask,attn_weights=attn_weights)
-            x = x + self.mlp(self.ln_2(x))
-            return x
-        # elif attn_weights is not None:
-        #     x = x + self.attention(self.ln_1(x), attn_weights=attn_weights,attn_mask=attn_mask)
-        #     x = x + self.mlp(self.ln_2(x))
-        #     return x
-        elif need_weights:
-            _attn, _attn_weight = self.attention(self.ln_1(x), need_weights=need_weights,attn_mask=attn_mask,attn_weights=attn_weights)
-            x = x + _attn
-            x = x + self.mlp(self.ln_2(x))
-            return x, _attn_weight
-        else:
-            x = x + self.attention(self.ln_1(x), attn_mask=attn_mask, attn_weights=attn_weights) # original
-            x = x + self.mlp(self.ln_2(x))
-            return x
-        # else:
-        #     x = x + self.attention(self.ln_1(x), attn_mask=attn_mask) # original
-        #     x = x + self.mlp(self.ln_2(x))
-        #     return x
+
+        x = x + self.attention(self.ln_1(x), attn_mask) # original
+        x = x + self.mlp(self.ln_2(x))
+        return x
 
 
 class Transformer(nn.Module):
