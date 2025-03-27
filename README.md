@@ -5,14 +5,8 @@
 <img src="assets/visual.png" width="100%">
 
 # Environment Setup
-1. For the generation of GEM attention maps. (Make sure the open_clip version is 2.24.0, otherwise gem may not run properly.)
 ```
-conda env create -f environment_gemattn.yaml
-conda activate gemattn
-```
-2. For HF_GL_RIS
-```
-conda env create -f environment_hfglris.yaml
+conda env create -f environment.yaml
 conda activate hfglris
 cd third_parth
 cd modified_CLIP
@@ -51,11 +45,11 @@ unzip refcocog.zip
 # Run demo
 1. Generate GEM attention maps.
 ```
-CUDA_VISIBLE_DEVICES=0 /path2gem/bin/python save_attn_gem.py --dataset refcoco(+/g) --split testA/testB/test/val
+CUDA_VISIBLE_DEVICES=0 /path2env/bin/python save_attn_gem.py --dataset refcoco(+/g) --split testA/testB/test/val
 ```
 2. Run HF_GL_RIS.
 ```
-CUDA_VISIBLE_DEVICES=0 /path2hfglris/bin/python HF_GL_main.py --dataset refcoco(+/g) --split testA/testB/test/val
+CUDA_VISIBLE_DEVICES=0 /path2env/bin/python HF_GL_main.py --dataset refcoco(+/g) --split testA/testB/test/val
 ```
 
 ## Acknowledgement
