@@ -7,7 +7,7 @@
 # Environment Setup
 ```
 conda env create -f environment.yaml
-conda activate hfglris
+conda activate hybridgl
 cd third_parth
 cd modified_CLIP
 pip install -e .
