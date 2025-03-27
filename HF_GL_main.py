@@ -14,7 +14,6 @@ from clip.simple_tokenizer import SimpleTokenizer
 import tqdm
 import cv2
 
-# from freesolo.engine.trainer import BaselineTrainer
 from segment_anything import sam_model_registry, SamAutomaticMaskGenerator
 
 
@@ -38,11 +37,8 @@ def main(args, Height, Width, Fun):
         args.splitBy = 'unc'  # unc in refcoco, refcoco+,
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     if device == 'cuda':
-        torch.cuda.set_device(0)
         print("now using cuda: ",torch.version.cuda)
         print("gpu cnt:",torch.cuda.device_count())
-        # for gpucnt in range(torch.cuda.device_count()):
-        #     print(gpucnt,' : ',torch.cuda.get_device_name(gpucnt))
     else :
         print("now using CPU")
     dataset = ReferDataset2(args,
@@ -88,26 +84,12 @@ def main(args, Height, Width, Fun):
     ########################## load mode
 
     for i, data in enumerate(tbar):
-        # if i>0: break
         image, target, clip_embedding, sentence_raw = data
         clip_embedding, target = clip_embedding.squeeze(1).to(device), target.to(device)
-        # print(data[0]['sam_img'][0].shape)
         original_imgs = torch.stack([T.Resize((height, width))(img.to(device)) for img, height, width in
-                                    zip(image, data[0]['height'], data[0]['width'])], dim=0)  # [1, 3, 428, 640] 
-
-
-        # fmasks = open(f"./data/var/PhraseCut/masks_test/cogmaskvar"+str(i),"rb")
-        # masks = pickle.load(fmasks)
-        # fmasks.close()
-        # fbox = open(f"./data/var/PhraseCut/boxes_test/cogboxvar"+str(i),"rb")
-        # boxes = pickle.load(fbox)
-        # fbox.close()
-        # masks = masks.to(device)
-        # boxes = boxes.to(device)
-        # print("masks.shape",masks.shape)
+                                    zip(image, data[0]['height'], data[0]['width'])], dim=0) 
 
         sam_img = np.array((image[0]['sam_img'][0]))
-        # print(image[0]['sam_img'][0])
         sam_masks = mask_generator.generate(sam_img)
         masks = [torch.tensor(m['segmentation']) for m in sam_masks]
         masks = torch.stack(masks).to(device)
@@ -115,8 +97,6 @@ def main(args, Height, Width, Fun):
         boxes = [m['bbox'] for m in sam_masks]
         boxes = torch.tensor(boxes)
         boxes = boxes.to(device)
-
-        #################### load masks
 
         pixel_mean = torch.tensor([0.48145466, 0.4578275, 0.40821073]).reshape(1, 3, 1, 1).to(masks.device)
         
@@ -127,8 +107,6 @@ def main(args, Height, Width, Fun):
             pred_mask, pred_box = pred_mask.type(torch.uint8), pred_box.type(torch.int)
     
             prompted_image = imagesrc[0].numpy().copy()
-            # print(prompted_image.dtype)
-            # print(pred_mask.shape)
             if type(pred_mask) != type(imagesrc[0].numpy()):
                 mask = pred_mask.cpu().numpy()
             sharp_region = cv2.bitwise_and(
@@ -136,43 +114,25 @@ def main(args, Height, Width, Fun):
                 prompted_image.copy(),
                 mask=np.clip(mask, 0, 255).astype(np.uint8),
             )
-            # Get the blurred region using the inverted mask
             inv_mask = 1 - mask
             blurred_region = (blurred * inv_mask[:, :, None]).astype(np.uint8)
-            # Combine the sharp and blurred regions
             prompted_image = cv2.add(sharp_region, blurred_region)
 
-
             prompt_img = T.ToTensor()(prompted_image)
-            # print("1 ",prompt_img.shape, prompt_img.mean())
             prompt_img = T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])(prompt_img)
-            # print("2 ",prompt_img.shape, prompt_img.mean())
             prompt_img = TF.resize(prompt_img.squeeze(0), (Height, Width))
             prompt_imgs.append(prompt_img)
 
         prompt_imgs = torch.stack(prompt_imgs,dim=0).to(device)
-        
-
-
-        # del prompt_imgs
-        ############################ resize imgs
 
         cropped_imgs = []
         for pred_box, pred_mask in zip(boxes, masks):
             pred_mask, pred_box = pred_mask.type(torch.uint8), pred_box.type(torch.int)
-            # pmask = generate_direction_bias(sentence,(pred_mask.shape[0], pred_mask.shape[1]), masks.device)
-            # print(original_imgs.shape, pred_mask[None, None, ...].shape, pmask.shape)
-            # print(pred_box)
             masked_image = original_imgs * pred_mask[None, None, ...] + (1 - pred_mask[None, None, ...]) * pixel_mean
-            # masked_image = TF.resized_crop(masked_image.squeeze(0), ymin, xmin, h, w, (Height, Width))
             masked_image = TF.resize(masked_image.squeeze(0), (Height, Width))
             cropped_imgs.append(masked_image.squeeze(0))
 
         cropped_imgs = torch.stack(cropped_imgs, dim=0)
-        # print(masks)
-        # prompt_features = Model(masked_img=cropped_imgs, prompted_img=prompt_imgs, pred_masks=masks, masking_type='share_attn', masking_block=9,layer_add=Neg)
-        
-        # prompt_features = Model(masked_img=cropped_imgs, prompted_img=prompt_imgs, pred_masks=masks, masking_type='share_attn_l2g', masking_block=9,layer_add=0)
         prompt_features = Model(masked_img=cropped_imgs, prompted_img=prompt_imgs, pred_masks=masks, masking_type=Fun, masking_block=9,layer_add=1)
 
         
@@ -189,9 +149,8 @@ def main(args, Height, Width, Fun):
 
             sentence_for_spacy = ' '.join(sentence_for_spacy)
             dirflag = extract_dir_phrase(sentence_for_spacy, nlp, False)
-
             visual_feature = prompt_features
-            ########## visual ##################### text #######################
+            
             sentence_token = clip.tokenize(sentence_for_spacy).to(device)
             noun_phrase, not_phrase_index, head_noun = extract_noun_phrase(sentence_for_spacy, nlp, need_index=True)
             noun_phrase_token = clip.tokenize(noun_phrase).to(device)
@@ -201,7 +160,6 @@ def main(args, Height, Width, Fun):
             text_ensemble = r * sentence_features + (1-r) * noun_phrase_features
             score_attn = Model.calculate_score(visual_feature, text_ensemble)
 
-            ################ Neg text
             noun_phrases, nouns = extract_nouns(sentence_for_spacy, nlp)
             other_noun_features = torch.zeros(1, 512).to(device)
             cnt_other_nouns = 0
@@ -212,9 +170,7 @@ def main(args, Height, Width, Fun):
             if cnt_other_nouns != 0:
                 other_noun_features = other_noun_features / cnt_other_nouns
                 
-            Neg_text_ensemble = other_noun_features
-            # score =  Model.calculate_similarity_score(visual_feature, text_ensemble) if mode == 'Res' else Model.calculate_score(visual_feature, text_ensemble)
-            score_clip_Neg = Model.calculate_score(visual_feature, Neg_text_ensemble)
+            score_clip_Neg = Model.calculate_score(visual_feature, other_noun_features)
 
             max_index_attn = torch.argmax(score_attn)
             result_seg_attn = masks[max_index_attn]
@@ -222,16 +178,10 @@ def main(args, Height, Width, Fun):
             _, m_IoU, cum_I, cum_U = Compute_IoU(result_seg_attn, target, cum_I, cum_U, m_IoU)
 
             score_diffs=[]
-            
             relaflag = extract_rela_word(sentence_for_spacy, nlp)
-            # ################# A D D ### D I F F ##########################
-            # imgattn = genattn_withdiff(diff_img, ldm_stable, prompt = sentence_for_spacy, target_noun = head_noun, time_step=NUM_DIFFUSION_STEPS, generator=g_cpu, device=device, controller =controller)
-            # fattn = open("./data/var/refcocog/attns_816/cogattnvar"+str(i)+"j"+str(j),"rb")
             fattn = open(f"./data/var/{args.dataset}/attns_gem_{args.split}_openai_b16/attnvar"+str(i)+"j"+str(j),"rb")
             imgattn = pickle.load(fattn)
             fattn.close()
-            # 用cv2 resize到mask.shape[-2] mask.shape[-1]
-            # imgattn = torch.Tensor(cv2.resize(imgattn.numpy(), (masks.shape[-1], masks.shape[-2]), interpolation=cv2.INTER_LINEAR))
             imgattn = imgattn.to(device)
 
             imgattn = (imgattn-imgattn.min()) / (imgattn.max()-imgattn.min())
@@ -241,31 +191,22 @@ def main(args, Height, Width, Fun):
 
             imgattn = imgattn / imgattn.mean()
             
-            
             if relaflag == "big":
                 black = 1.95
-                # black = 1.5
             elif relaflag == "small":
                 black = 1.5
             else:
                 black = 1.8
-            # black = 1.8
+                
             for pred_mask in masks:
                 pred_mask = pred_mask.type(torch.uint8)
                 score_difftmp = (imgattn * (2-black) * pred_mask/(pred_mask.sum())).sum() - (imgattn * black * (1 - pred_mask) / ((1 - pred_mask).sum())).sum()
-                # score_difftmp = (imgattn * pred_mask).sum() - (imgattn * (1 - pred_mask)).sum()
                 score_diffs.append(torch.Tensor([score_difftmp]))
-                # print(score_diff)
-                # print((pred_mask).shape,imgattn.shape,score_diff.shape)
             score_diff = torch.stack(score_diffs,dim=0)
             score_diff=score_diff.to(device)
             score_clip = softmax0(score_attn)
-            # ################# A D D ### D I F F ##########################
-            
-
-            # #################### RELATION #########################################
-            # score = (score - score.min())/(score.max()-score.min())
             score_clip_Neg = softmax0(score_clip_Neg)
+            
             if k1 > len(score_clip):
                 k1 = len(score_clip)
             if k2 > len(score_clip_Neg):
@@ -279,12 +220,10 @@ def main(args, Height, Width, Fun):
                 for idx_i in range(k1):                  #idx_i in 1,2,3,4,5
                     for idx_j in maxidxs:           
                         topscores[idx_i]=topscores[idx_i]+relation_boxes(boxes[maxidxs[idx_i]],boxes[idx_j],score_clip[maxidxs[idx_i]][0],score_clip[idx_j][0],relaflag)
-                        # topscores[idx_i]=topscores[idx_i]+relation_boxes(boxes[maxidxs[idx_i]],boxes[idx_j],score_clip[maxidxs[idx_i]],1-score_clip[idx_j],relaflag)
             else:
                 for idx_i in range(k1):                  #idx_i in 1,2,3,4,5
                     for idx_j in maxNegidxs:            #idx_j in boxes' idx
                         topscores[idx_i]=topscores[idx_i]+relation_boxes(boxes[maxidxs[idx_i]],boxes[idx_j],score_clip[maxidxs[idx_i]][0],score_clip_Neg[idx_j][0],relaflag)
-                        # topscores[idx_i]=topscores[idx_i]+relation_boxes(boxes[maxidxs[idx_i]],boxes[idx_j],score_clip[maxidxs[idx_i]],score_clip_Neg[idx_j][0],relaflag)
             
             topscores = torch.Tensor(topscores).to(device)
             topscores = softmax0(topscores)
@@ -292,15 +231,10 @@ def main(args, Height, Width, Fun):
             for idx_i in range(k1):      
                 topscores[idx_i]=topscores[idx_i] * (1 - alpha) + alpha * score_diff[maxidxs[idx_i]][0]
             max_index_final = maxidxs[torch.argmax(topscores)]
-            # #################### RELATION ########################################
-            # score_final= score_clip * (1 - alpha) + alpha * score_diff
-            # max_index = torch.argmax(score_final)
             result_seg_final = masks[max_index_final]
 
-            # _, m_IoU, cum_I, cum_U = Compute_IoU(result_seg_attn, target, cum_I, cum_U, m_IoU)
             _, m_IoU_final, cum_I_final, cum_U_final = Compute_IoU(result_seg_final, target, cum_I_final, cum_U_final, m_IoU_final)
 
-            
     f = open(f'./result_log/result_log_{args.dataset}_{args.split}.txt', 'a')
     f.write(f'\n\n CLIP Model: {mode}  Fun={Fun} '
             f'\nDataset: {args.dataset} / {args.split} / {args.splitBy}'
@@ -309,7 +243,7 @@ def main(args, Height, Width, Fun):
     overall = cum_I * 100.0 / cum_U
     mean_IoU = torch.mean(torch.tensor(m_IoU)) * 100.0
 
-    f.write(f'\n{overall:.2f} / {mean_IoU:.2f}')   # Neg:{Neg:.2f}
+    f.write(f'\n{overall:.2f} / {mean_IoU:.2f}')  
     overall_final = cum_I_final * 100.0 / cum_U_final
     mean_IoU_final = torch.mean(torch.tensor(m_IoU_final)) * 100.0
 
@@ -317,15 +251,9 @@ def main(args, Height, Width, Fun):
     f.close()
 
 
-
-
 if __name__ == "__main__":
-    args = default_argument_parser().parse_args()
-    
-    # Negs=np.linspace(0.5,0.9,5)
-    # Negs=np.linspace(0,1,11)
+    args = default_argument_parser().parse_args()    
     Funs=['share_attn_merge_g2l_tokenmask']
-    # time.sleep(1200)
     for Fun in Funs:    
         with torch.no_grad():
             main(args, Height, Width, Fun)
