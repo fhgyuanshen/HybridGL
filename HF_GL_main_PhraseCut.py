@@ -301,7 +301,7 @@ def main(args, Height, Width, Fun):
             _, m_IoU_final, cum_I_final, cum_U_final = Compute_IoU(result_seg_final, target, cum_I_final, cum_U_final, m_IoU_final)
 
 
-    f = open('./result_log/our_saveneg_log.txt', 'a')
+    f = open('./result_log/result_log_PhraseCut.txt', 'a')
     f.write(f'\n\n CLIP Model: {mode}  Fun={Fun} '
             f'\nDataset: PhraseCut / test'
             f'\nOverall IoU / mean IoU')
@@ -314,6 +314,7 @@ def main(args, Height, Width, Fun):
     mean_IoU_final = torch.mean(torch.tensor(m_IoU_final)) * 100.0
 
     f.write(f'\n{overall_final:.2f} / {mean_IoU_final:.2f}')
+    f.close()
 
 
 
