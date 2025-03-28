@@ -43,13 +43,10 @@ unzip refcocog.zip
 ```
 
 # Run demo
-1. Generate GEM attention maps.
 ```
-CUDA_VISIBLE_DEVICES=0 /path2env/bin/python save_attn_gem.py --dataset refcoco(+/g) --split testA/testB/test/val
-```
-2. Run HF_GL_RIS.
-```
-CUDA_VISIBLE_DEVICES=0 /path2env/bin/python HF_GL_main.py --dataset refcoco(+/g) --split testA/testB/test/val
+CUDA_VISIBLE_DEVICES=0 /path2env/bin/python Hybridgl_main.py --dataset refcoco(+/g) --split testA/testB/test/val
+CUDA_VISIBLE_DEVICES=0 /path2env/bin/python Hybridgl_main.py --dataset refcocog --split val
+...
 ```
 
 ## Acknowledgement
