@@ -15,7 +15,7 @@ import h5py
 from refer.refer import REFER
 
 
-class ReferDataset2(data.Dataset):
+class ReferDataset(data.Dataset):
 
     def __init__(self,
                  args,
@@ -23,7 +23,6 @@ class ReferDataset2(data.Dataset):
                  target_transforms=None,
                  preprocessor=None,
                  split='train',
-                 eval_mode=False,
                  prompt_ensemble=False,
                  coco_instance_gt=False,
                  mask2former=False):
@@ -33,7 +32,6 @@ class ReferDataset2(data.Dataset):
         :param image_transforms: get_transforms(args), Resize, ToTensor, Normalize, T.Compose(transforms)
         :param target_transforms: None
         :param split: 'train' or 'val'
-        :param eval_mode:
         '''
         self.classes = []
         self.image_transforms = image_transforms
@@ -55,8 +53,6 @@ class ReferDataset2(data.Dataset):
         self.input_ids = []
         self.sentence_raws = []
         self.cat_names = []
-
-        self.eval_mode = eval_mode
 
         for r in ref_ids:
             ref = self.refer.Refs[r]
@@ -114,10 +110,8 @@ class ReferDataset2(data.Dataset):
         else:
             tensor_img = torch.tensor(np.array(img))
         
-        sam_img = cv2.imread(img_dir)
-        sam_img = cv2.cvtColor(sam_img, cv2.COLOR_BGR2RGB)
-        # sam_img = sam_img.transpose(2,0,1)
-
+        sam_img = np.array(img)
+        
         ref = self.refer.loadRefs(this_ref_id)
         ref_mask = np.array(self.refer.getMask(ref[0])['mask'])
 
@@ -126,21 +120,7 @@ class ReferDataset2(data.Dataset):
 
         annot = Image.fromarray(annot.astype(np.uint8), mode="P")
 
-        if self.eval_mode:
-            embedding = []
-            att = []
-            sentence_raw = []
-            for s in range(len(self.input_ids[index])):
-                text_embedding = self.input_ids[index][s]
-                embedding.append(text_embedding.unsqueeze(-1))
-
-            sentence_raw = self.sentence_raws[index]
-            tensor_embeddings = torch.cat(embedding, dim=-1)
-
-        else:
-            choice_sent = np.random.choice(len(self.input_ids[index]))
-            tensor_embeddings = self.input_ids[index][choice_sent]
-            sentence_raw = self.sentence_raws[index][choice_sent]
+        sentence_raw = self.sentence_raws[index]
 
         if self.coco_instance_gt:
             coco_instance_target = self.coco.loadAnns(self.coco.getAnnIds(this_img_id))
@@ -166,21 +146,19 @@ class ReferDataset2(data.Dataset):
             MaskAnns = []
             cat_names = []
 
-        data = []
-
         if self.mask2former:
             resized_img = np.asarray(img)
 
         else:
-            resized_img = T.Resize(800)(img)
-            resized_img = T.ToTensor()(resized_img)
-            resized_img = T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])(resized_img)
+            # resized_img = T.Resize(800)(img)
+            img = T.ToTensor()(img)
+            img = T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])(img)
 
-        data.append(dict(image=resized_img,tensor_img = tensor_img, sam_img = sam_img, height=np.asarray(img).shape[0], width=np.asarray(img).shape[1],
+        data = dict(image=img,tensor_img = tensor_img, sam_img = sam_img, height=np.asarray(img).shape[-2], width=np.asarray(img).shape[-1],
                          file_name=this_img['file_name'], cat_name=this_cat_name, img_id=this_img_id,
-                         coco_instance_gt=MaskAnns, coco_instance_gt_box=BoxAnns ,coco_instance_cat=cat_names))
+                         coco_instance_gt=MaskAnns, coco_instance_gt_box=BoxAnns ,coco_instance_cat=cat_names)
 
-        return data, np.asarray(annot), tensor_embeddings, sentence_raw
+        return data, np.asarray(annot), sentence_raw
 
 
 
