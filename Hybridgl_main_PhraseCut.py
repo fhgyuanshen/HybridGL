@@ -24,12 +24,13 @@ def main(args, Height, Width):
         print("now using cuda: ",torch.version.cuda)
     else :
         print("now using CPU")
-    dataset = PhraseCutDataset(split = 'test')
 
     gem_model = gem.create_gem_model(
         model_name='ViT-B/16', pretrained='openai', device=device
     )
-    data_loader = torch.utils.data.DataLoader(dataset, batch_size=1, num_workers=4, preprocessor = preprocess, shuffle=False)
+    preprocess = gem.get_gem_img_transform()
+    dataset = PhraseCutDataset(split = 'test', preprocessor = preprocess)
+    data_loader = torch.utils.data.DataLoader(dataset, batch_size=1, num_workers=4, shuffle=False)
     
     Model = CLIPViTFM(model_name='ViT-B/16').to(device)
     Model.eval()
