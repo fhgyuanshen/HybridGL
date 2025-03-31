@@ -145,7 +145,6 @@ def main(args, Height, Width):
             sentence_token = clip.tokenize(sentence_for_spacy).to(device)
             noun_phrase, not_phrase_index, head_noun = extract_noun_phrase(sentence_for_spacy, nlp, need_index=True)
             
-
             noun_phrase_token = clip.tokenize(noun_phrase).to(device)
             sentence_features = Model.model.encode_text(sentence_token)
             noun_phrase_features = Model.model.encode_text(noun_phrase_token)
@@ -166,9 +165,9 @@ def main(args, Height, Width):
             score_clip_Neg = Model.calculate_score(visual_feature, other_noun_features)
 
             max_index_hybrid = torch.argmax(score_clip)
-            result_seg_attn = masks[max_index_hybrid]
+            result_seg_hybrid = masks[max_index_hybrid]
 
-            _, m_IoU, cum_I, cum_U = Compute_IoU(result_seg_attn, target, cum_I, cum_U, m_IoU)
+            _, m_IoU, cum_I, cum_U = Compute_IoU(result_seg_hybrid, target, cum_I, cum_U, m_IoU)
 
             score_clip = softmax0(score_clip)
             score_clip_Neg = softmax0(score_clip_Neg)
@@ -194,6 +193,7 @@ def main(args, Height, Width):
             
             topscores = torch.Tensor(topscores).to(device)
             topscores = softmax0(topscores)
+
             ########  Spatial Coherence Guidance ########
             score_gem_list=[]
             imgattn = gem_model(image['tensor_img'].to(device), [noun_phrase])[0]
