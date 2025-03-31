@@ -1,34 +1,25 @@
-import argparse
-import pickle
 import torch
-print(torch.__version__)
 import clip
-import os
-Height, Width = 224, 224
-Neg = 0.25
+
 import torchvision.transforms as T
-import torchvision.transforms.functional as TF
 import spacy
 import numpy as np
-from clip.simple_tokenizer import SimpleTokenizer
 import tqdm
 import cv2
 
-from segment_anything import sam_model_registry, SamAutomaticMaskGenerator
-
-
 # refer dataset
-from data.dataset_refer_bert import ReferDataset2
-from model.backbone2 import CLIPViTFM2
-from utils import default_argument_parser, setup, Compute_IoU, extract_noun_phrase, gen_dir_mask, extract_dir_phrase, extract_rela_word, relation_boxes, extract_nouns
+from data.dataset_refer_bert import ReferDataset
+from model.backbone import CLIPViTFM
+from utils import default_argument_parser, Compute_IoU, extract_noun_phrase, gen_dir_mask, extract_dir_phrase, extract_rela_word, relation_boxes, extract_nouns
 
 import gem
+from segment_anything import sam_model_registry, SamAutomaticMaskGenerator
 
-# export CUDA_VISIBLE_DEVICES=3 
+Height, Width = 224, 224
 
 
 
-def main(args, Height, Width, Fun):
+def main(args, Height, Width):
     assert args.eval_only, 'Only eval_only available!'
 
     if args.dataset == 'refcocog':
@@ -38,26 +29,21 @@ def main(args, Height, Width, Fun):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     if device == 'cuda':
         print("now using cuda: ",torch.version.cuda)
-        print("gpu cnt:",torch.cuda.device_count())
     else :
         print("now using CPU")
+        
     gem_model = gem.create_gem_model(
-        model_name='ViT-B/32', pretrained='openai', device=device
+        model_name='ViT-B/16', pretrained='openai', device=device
     )
     preprocess = gem.get_gem_img_transform()
-    dataset = ReferDataset2(args,
+    dataset = ReferDataset(args,
                            image_transforms=None,
                            target_transforms=None,
                            preprocessor = preprocess,
-                           split=args.split,
-                           eval_mode=True)
+                           split=args.split)
     data_loader = torch.utils.data.DataLoader(dataset, batch_size=1, num_workers=4, shuffle=False)
-    ################################### load data
 
-    mode = 'ViT'  # or ViT
-    assert (mode == 'Res') or (mode == 'ViT'), 'Specify mode(Res or ViT)'
-    
-    Model = CLIPViTFM2(model_name='ViT-B/16').to(device)
+    Model = CLIPViTFM(model_name='ViT-B/16').to(device)
     Model.eval()
 
     nlp = spacy.load('en_core_web_lg')
@@ -68,12 +54,14 @@ def main(args, Height, Width, Fun):
     m_IoU_final = []
 
     r = 0.5
+    alpha = 0.6
+
     softmax0 = torch.nn.Softmax(0)
     softmax0 = softmax0.to(device)
-    k1=3
-    k2=6
-
-    print(f"Fun={Fun}")
+    k1=3    # topk spatial relationship for the target noun
+    k2=6    # topk spatial relationship for other nouns
+    fusion_mode = args.fusion_mode
+    print(f"fusion mode={fusion_mode}")
     sam = sam_model_registry['default'](checkpoint="./checkpoints/sam_vit_h_4b8939.pth")
     sam.to(device)
     mask_generator = SamAutomaticMaskGenerator(sam,
@@ -85,63 +73,61 @@ def main(args, Height, Width, Fun):
                                                 min_mask_region_area=800,)
     tbar = tqdm.tqdm(data_loader)
 
-    ########################## load mode
+    ########################## load data ##########################
 
     for i, data in enumerate(tbar):
-        image, target, clip_embedding, sentence_raw = data
-        clip_embedding, target = clip_embedding.squeeze(1).to(device), target.to(device)
-        
-        original_imgs = torch.stack([T.Resize((height, width), antialias=None)(img.to(device)) for img, height, width in
-                                    zip(image[0]['image'], image[0]['height'], image[0]['width'])], dim=0)  # [1, 3, 428, 640] 
-        
-        sam_img = np.array((image[0]['sam_img'][0]))
+        image, target, sentence_raw = data
+        target = target.to(device)
+        ####### generate masks #######
+        original_img = image['image'].to(device)
+        sam_img = np.array((image['sam_img'][0]))
         sam_masks = mask_generator.generate(sam_img)
         masks = [torch.tensor(m['segmentation']) for m in sam_masks]
         masks = torch.stack(masks).to(device)
         
         boxes = [m['bbox'] for m in sam_masks]
-        boxes = torch.tensor(boxes)
-        boxes = boxes.to(device)
+        boxes = torch.tensor(boxes).to(device)
 
+        ####### preprocess global and local images #######
         pixel_mean = torch.tensor([0.48145466, 0.4578275, 0.40821073]).reshape(1, 3, 1, 1).to(masks.device)
         
-        prompt_imgs = []
-        imagesrc = image[0]['sam_img']
+        global_imgs = []
+        local_imgs = []
+
+        imagesrc = image['sam_img']
         blurred = cv2.GaussianBlur(imagesrc[0].numpy().copy(), (15, 15), 0)
         for pred_box, pred_mask in zip(boxes, masks):
             pred_mask, pred_box = pred_mask.type(torch.uint8), pred_box.type(torch.int)
     
-            prompted_image = imagesrc[0].numpy().copy()
+            global_img = imagesrc[0].numpy()
             if type(pred_mask) != type(imagesrc[0].numpy()):
                 mask = pred_mask.cpu().numpy()
             sharp_region = cv2.bitwise_and(
-                prompted_image.copy(),
-                prompted_image.copy(),
+                global_img,
+                global_img,
                 mask=np.clip(mask, 0, 255).astype(np.uint8),
             )
             inv_mask = 1 - mask
             blurred_region = (blurred * inv_mask[:, :, None]).astype(np.uint8)
-            prompted_image = cv2.add(sharp_region, blurred_region)
+            global_img = cv2.add(sharp_region, blurred_region)
 
-            prompt_img = T.ToTensor()(prompted_image)
-            prompt_img = T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])(prompt_img)
+            global_img = T.ToTensor()(global_img)
+            global_img = T.Resize((Height, Width), antialias=None)(global_img)
+            global_img = T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])(global_img)
+            global_imgs.append(global_img)
+            
+            masked_image = original_img * pred_mask[None,None, ...] + (1 - pred_mask[None, None, ...]) * pixel_mean
             masked_image = T.Resize((Height, Width), antialias=None)(masked_image.squeeze(0))
-            prompt_imgs.append(prompt_img)
+            local_imgs.append(masked_image.squeeze(0))
 
-        prompt_imgs = torch.stack(prompt_imgs,dim=0).to(device)
+        global_imgs = torch.stack(global_imgs,dim=0).to(device)
+        local_imgs = torch.stack(local_imgs, dim=0).to(device)
 
-        cropped_imgs = []
-        for pred_box, pred_mask in zip(boxes, masks):
-            pred_mask, pred_box = pred_mask.type(torch.uint8), pred_box.type(torch.int)
-            masked_image = original_imgs * pred_mask[None, None, ...] + (1 - pred_mask[None, None, ...]) * pixel_mean
-            masked_image = T.Resize((Height, Width), antialias=None)(masked_image.squeeze(0))
-            cropped_imgs.append(masked_image.squeeze(0))
+        ####### calculate hybrid features #######
+        hybrid_features = Model(local_imgs=local_imgs, global_imgs=global_imgs, pred_masks=masks, fusion_mode=fusion_mode, masking_block=9)
 
-        cropped_imgs = torch.stack(cropped_imgs, dim=0)
-        prompt_features = Model(masked_img=cropped_imgs, prompted_img=prompt_imgs, pred_masks=masks, masking_type=Fun, masking_block=9,layer_add=1)
-
-        
-        for sentence, j in zip(sentence_raw, range(clip_embedding.size(-1))):
+        ####### calculate text features and scores #######
+        for j, sentence in enumerate(sentence_raw):
             sentence = sentence[0].lower()
             doc = nlp(sentence)
 
@@ -154,25 +140,23 @@ def main(args, Height, Width, Fun):
 
             sentence_for_spacy = ' '.join(sentence_for_spacy)
             dirflag = extract_dir_phrase(sentence_for_spacy, nlp, False)
-            visual_feature = prompt_features
+            visual_feature = hybrid_features
             
             sentence_token = clip.tokenize(sentence_for_spacy).to(device)
             noun_phrase, not_phrase_index, head_noun = extract_noun_phrase(sentence_for_spacy, nlp, need_index=True)
             
-            imgattn = gem_model(image[0]['tensor_img'].to(device), [noun_phrase])[0]
-            imgattn = T.Resize((int(image[0]['height']), int(image[0]['width'])), antialias=True)(imgattn)[0]
 
             noun_phrase_token = clip.tokenize(noun_phrase).to(device)
             sentence_features = Model.model.encode_text(sentence_token)
             noun_phrase_features = Model.model.encode_text(noun_phrase_token)
 
             text_ensemble = r * sentence_features + (1-r) * noun_phrase_features
-            score_attn = Model.calculate_score(visual_feature, text_ensemble)
+            score_clip = Model.calculate_score(visual_feature, text_ensemble)
 
-            noun_phrases, nouns = extract_nouns(sentence_for_spacy, nlp)
+            other_noun_phrases, nouns = extract_nouns(sentence_for_spacy, nlp)
             other_noun_features = torch.zeros(1, 512).to(device)
             cnt_other_nouns = 0
-            for other_noun in noun_phrases:
+            for other_noun in other_noun_phrases:
                 noun_token = clip.tokenize('a photo of '+other_noun).to(device)
                 other_noun_features += Model.model.encode_text(noun_token)
                 cnt_other_nouns += 1
@@ -181,22 +165,45 @@ def main(args, Height, Width, Fun):
                 
             score_clip_Neg = Model.calculate_score(visual_feature, other_noun_features)
 
-            max_index_attn = torch.argmax(score_attn)
-            result_seg_attn = masks[max_index_attn]
+            max_index_hybrid = torch.argmax(score_clip)
+            result_seg_attn = masks[max_index_hybrid]
 
             _, m_IoU, cum_I, cum_U = Compute_IoU(result_seg_attn, target, cum_I, cum_U, m_IoU)
 
-            score_gem_list=[]
+            score_clip = softmax0(score_clip)
+            score_clip_Neg = softmax0(score_clip_Neg)
+
+            ######## Spatial Relationship Guidance ########
             relaflag = extract_rela_word(sentence_for_spacy, nlp)
-            fattn = open(f"./data/var/{args.dataset}/attns_gem_{args.split}_openai_phrase/attnvar"+str(i)+"j"+str(j),"rb")
-            imgattn = pickle.load(fattn)
-            fattn.close()
+            if k1 > len(score_clip):
+                k1 = len(score_clip)
+            if k2 > len(score_clip_Neg):
+                k2 = len(score_clip_Neg)
+            _, maxidxs = torch.topk(score_clip.view(-1),k=k1)
+            _, maxNegidxs = torch.topk(score_clip_Neg.view(-1),k=k2)
+
+            topscores = np.zeros(k1)
+            if len(nouns)==0:   # sentence only has target noun
+                for idx_i in range(k1):                  #idx_i in 1,2,3,4,5
+                    for idx_j in maxidxs:           
+                        topscores[idx_i]=topscores[idx_i]+relation_boxes(boxes[maxidxs[idx_i]],boxes[idx_j],score_clip[maxidxs[idx_i]][0],score_clip[idx_j][0],relaflag)
+            else:               # sentence has other nouns
+                for idx_i in range(k1):                  #idx_i in 1,2,3,4,5
+                    for idx_j in maxNegidxs:            #idx_j in boxes' idx
+                        topscores[idx_i]=topscores[idx_i]+relation_boxes(boxes[maxidxs[idx_i]],boxes[idx_j],score_clip[maxidxs[idx_i]][0],score_clip_Neg[idx_j][0],relaflag)
+            
+            topscores = torch.Tensor(topscores).to(device)
+            topscores = softmax0(topscores)
+            ########  Spatial Coherence Guidance ########
+            score_gem_list=[]
+            imgattn = gem_model(image['tensor_img'].to(device), [noun_phrase])[0]
+            imgattn = T.Resize((int(image['height']), int(image['width'])), antialias=True)(imgattn)[0]
             imgattn = imgattn.to(device)
 
             imgattn = (imgattn-imgattn.min()) / (imgattn.max()-imgattn.min())
 
             pmask = gen_dir_mask(dirflag, imgattn.shape[0], imgattn.shape[1], imgattn.device)
-            imgattn = imgattn * pmask
+            imgattn = imgattn * pmask    # Spatial Position Guidance
 
             imgattn = imgattn / imgattn.mean()
             
@@ -213,29 +220,7 @@ def main(args, Height, Width, Fun):
                 score_gem_list.append(torch.Tensor([score_gemtmp]))
             score_gem = torch.stack(score_gem_list,dim=0)
             score_gem=score_gem.to(device)
-            score_clip = softmax0(score_attn)
-            score_clip_Neg = softmax0(score_clip_Neg)
-            
-            if k1 > len(score_clip):
-                k1 = len(score_clip)
-            if k2 > len(score_clip_Neg):
-                k2 = len(score_clip_Neg)
-            _, maxidxs = torch.topk(score_clip.view(-1),k=k1)
-            _, maxNegidxs = torch.topk(score_clip_Neg.view(-1),k=k2)
 
-            topscores = np.zeros(k1)
-            if len(nouns)==0:
-                for idx_i in range(k1):                  #idx_i in 1,2,3,4,5
-                    for idx_j in maxidxs:           
-                        topscores[idx_i]=topscores[idx_i]+relation_boxes(boxes[maxidxs[idx_i]],boxes[idx_j],score_clip[maxidxs[idx_i]][0],score_clip[idx_j][0],relaflag)
-            else:
-                for idx_i in range(k1):                  #idx_i in 1,2,3,4,5
-                    for idx_j in maxNegidxs:            #idx_j in boxes' idx
-                        topscores[idx_i]=topscores[idx_i]+relation_boxes(boxes[maxidxs[idx_i]],boxes[idx_j],score_clip[maxidxs[idx_i]][0],score_clip_Neg[idx_j][0],relaflag)
-            
-            topscores = torch.Tensor(topscores).to(device)
-            topscores = softmax0(topscores)
-            alpha = 0.6
             for idx_i in range(k1):      
                 topscores[idx_i]=topscores[idx_i] * (1 - alpha) + alpha * score_gem[maxidxs[idx_i]][0]
             max_index_final = maxidxs[torch.argmax(topscores)]
@@ -243,26 +228,26 @@ def main(args, Height, Width, Fun):
 
             _, m_IoU_final, cum_I_final, cum_U_final = Compute_IoU(result_seg_final, target, cum_I_final, cum_U_final, m_IoU_final)
 
+
     f = open(f'./result_log/result_log_{args.dataset}_{args.split}.txt', 'a')
-    f.write(f'\n\n CLIP Model: {mode}  Fun={Fun} '
+    f.write(f'\n\n fusion_mode={fusion_mode} '
             f'\nDataset: {args.dataset} / {args.split} / {args.splitBy}'
             f'\nOverall IoU / mean IoU')
 
     overall = cum_I * 100.0 / cum_U
     mean_IoU = torch.mean(torch.tensor(m_IoU)) * 100.0
 
-    f.write(f'\n{overall:.2f} / {mean_IoU:.2f}')  
+    f.write(f'\npure hybridgl :{overall:.2f} / {mean_IoU:.2f}')  
     overall_final = cum_I_final * 100.0 / cum_U_final
     mean_IoU_final = torch.mean(torch.tensor(m_IoU_final)) * 100.0
 
-    f.write(f'\n{overall_final:.2f} / {mean_IoU_final:.2f}')
+    f.write(f'\nhybridgl w/ spatial guidance{overall_final:.2f} / {mean_IoU_final:.2f}')
     f.close()
 
 
 if __name__ == "__main__":
+
     args = default_argument_parser().parse_args()    
-    Funs=['share_attn_merge_g2l_tokenmask']
-    for Fun in Funs:    
-        with torch.no_grad():
-            main(args, Height, Width, Fun)
+    with torch.no_grad():
+        main(args, Height, Width)
 
