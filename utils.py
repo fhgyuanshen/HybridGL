@@ -401,6 +401,40 @@ def gen_gauss_img(mean,sigma,original_img,device):
     noisy_img = torch.Tensor(noisy_img)
     return noisy_img
 
+def calc_IoU(res_mask, target, sum_I, sum_U):
+    # masks: (N,H,W) 0,1
+    # pred: (N)   0-149
+    # target: (H,W) 0-149
+    target_infos = torch.unique(target).cpu().numpy()
+    # 枚举target_info, 取出对应pred对应的mask
+    # print(target_infos)
+    # print(torch.unique(res_mask).cpu().numpy())
+    # u = fk
+    for target_info in target_infos:
+        gt_now = target == target_info
+        pred_now = res_mask == target_info
+        I = torch.sum(torch.logical_and(pred_now, gt_now))
+        U = torch.sum(torch.logical_or(pred_now, gt_now))
+        sum_I[target_info] += I
+        sum_U[target_info] += U
+    # for i in range(len(masks)):
+    #     mask = masks[i]
+    #     pred_idx = pred[i]
+    #     # 取出target中为pred_idx的部分
+    #     target_mask = target == pred_idx
+    #     I = torch.sum(torch.logical_and(mask, target_mask))
+    #     U = torch.sum(torch.logical_or(mask, target_mask))
+        
+    #     # if U == 0:
+    #     #     this_iou = 0.0
+    #     # else:
+    #     #     this_iou = I * 1.0 / U
+    #     # I, U = I, U
+
+    #     sum_I[pred_idx-1] += I
+    #     sum_U[pred_idx-1] += U
+    return sum_I, sum_U
+
 def Compute_IoU(pred, target, cum_I, cum_U, mean_IoU=[]):
 
     if target.dtype != torch.bool:
@@ -609,26 +643,13 @@ For python-based LazyConfig, use "path.key=value".
     parser.add_argument('--visual_proj_path', default='./pretrain/', help='')
     parser.add_argument('--dataset', default='refcocog', help='refcoco, refcoco+, or refcocog')
     parser.add_argument('--split', default='val', help='only used when testing, testA, testB')
+    parser.add_argument('--fusion_mode', default='G2L', help='attn_masking, toekn_masking, L2G, G2L(default), G2L&L2G')
     parser.add_argument('--splitBy', default='umd', help='change to umd or google when the dataset is G-Ref (RefCOCOg)')
     parser.add_argument('--img_size', default=480, type=int, help='input image size')
     parser.add_argument('--refer_data_root', default='./refer/data/', help='REFER dataset root directory')
     parser.add_argument('--show_results', action='store_true', help='Whether to show results ')
 
     return parser
-
-
-def setup(args):
-    """
-    Create configs and perform basic setups.
-    """
-    cfg = get_cfg()
-    add_solo_config(cfg)
-    cfg.merge_from_file(args.config_file)
-    cfg.merge_from_list(args.opts)
-    cfg.freeze()
-    default_setup(cfg, args)
-    return cfg
-
 
 
 '''
