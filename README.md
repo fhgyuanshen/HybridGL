@@ -44,8 +44,8 @@ unzip refcocog.zip
 
 # Run demo
 ```
-CUDA_VISIBLE_DEVICES=0 /path2env/bin/python Hybridgl_main.py --dataset refcoco(+/g) --split testA/testB/test/val
-CUDA_VISIBLE_DEVICES=0 /path2env/bin/python Hybridgl_main.py --dataset refcocog --split val
+CUDA_VISIBLE_DEVICES=0 /path2env/bin/python Hybridgl_main.py --dataset refcoco(+/g) --split testA/testB/test/val --fusion_mode G2L/L2G/G2L&L2G
+CUDA_VISIBLE_DEVICES=0 /path2env/bin/python Hybridgl_main.py --dataset refcocog --split val --fusion_mode G2L
 ...
 ```
 
