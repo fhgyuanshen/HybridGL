@@ -236,43 +236,8 @@ def extract_rela_word(text, nlp):
                 deep2head = token.head.i
     return relaflag
 
-# def extract_rela_word(text, nlp):
-#     noun_phrases, nouns = extract_nouns(text, nlp)
-#     # print((set(nouns) & NULL_KEYWORDS))
-#     if (set(nouns) & NULL_KEYWORDS):
-#         relaflag = "none"
-#     else:
-#         relaflag = "none"
-#         doc = nlp(text)
-#         for token in doc:
-#             if token.text in LEFT_KEYWORDS:
-#                 relaflag = "left"
-#             elif token.text == RIGHT_KEYWORDS:
-#                 relaflag = "right"
-#             elif token.text in UP_KEYWORDS:
-#                 relaflag = "up"
-#             elif token.text in DOWN_KEYWORDS:
-#                 relaflag = "down"
-#             elif token.text in BIG_KEYWORDS:
-#                 relaflag = "big"
-#             elif token.text in SMALL_KEYWORDS:
-#                 relaflag = "small"
-#             elif token.text in WITHIN_KEYWORDS:
-#                 relaflag = "within"
-#     return relaflag
-
-
 
 def relation_boxes(boxi, boxj, scorei, scorej, relaword):
-    # RELATIONS = [
-    #     RelHeuristic(["left", "west"], lambda env: env.left_of()),
-    #     RelHeuristic(["right", "east"], lambda env: env.right_of()),
-    #     RelHeuristic(["above", "north", "top", "back", "behind"], lambda env: env.above()),
-    #     RelHeuristic(["below", "south", "under", "front"], lambda env: env.below()),
-    #     RelHeuristic(["bigger", "larger", "closer"], lambda env: env.bigger_than()),
-    #     RelHeuristic(["smaller", "tinier", "further"], lambda env: env.smaller_than()),
-    #     RelHeuristic(["inside", "within", "contained"], lambda env: env.within()),
-    # ]
     scoreout = 0
 
     if relaword == "none":
@@ -306,9 +271,9 @@ def mask2img(mask_seg):
     binary_image = mask_seg.to(torch.uint8) * 255
     h, w = binary_image.shape
     output_seg = torch.zeros((h, w, 3), dtype=torch.uint8)
-    output_seg[:, :, 0] = binary_image  # 红色通道
-    output_seg[:, :, 1] = binary_image  # 绿色通道
-    output_seg[:, :, 2] = binary_image  # 蓝色通道
+    output_seg[:, :, 0] = binary_image 
+    output_seg[:, :, 1] = binary_image 
+    output_seg[:, :, 2] = binary_image
     output_seg = output_seg.numpy()
     return output_seg
 
@@ -354,19 +319,6 @@ def apply_visual_prompts(
         # Combine the sharp and blurred regions
         prompted_image = cv2.add(sharp_region, blurred_region)
     
-    # if 'circle' in visual_prompt_type:
-    #     center_coordinates = ((bbox[0]+bbox[2]//2), (bbox[1]+bbox[3]//2))
-    #     axes_length = (bbox[2] // 2, bbox[3] // 2)
-    #     prompted_image = cv2.ellipse(
-    #         prompted_image,
-    #         center_coordinates,
-    #         axes_length,
-    #         0,
-    #         0,
-    #         360,
-    #         color,
-    #         thickness,
-    #     )
     if 'circle' in visual_prompt_type:
         mask_center, mask_height, mask_width = mask2chw(mask)
         center_coordinates = (mask_center[1], mask_center[0])
@@ -393,23 +345,14 @@ def apply_visual_prompts(
     return prompted_image
 
 def gen_gauss_img(mean,sigma,original_img,device):
-    # mean均值,sigma标准差,original_img(3*H*W)
     gauss = np.random.normal(mean,sigma,(original_img[1],original_img[2],original_img[0]))
     noisy_img = original_img + gauss
-    #设置图片添加高斯噪声之后的像素值的范围
     noisy_img = np.clip(noisy_img,a_min=0,a_max=255)
     noisy_img = torch.Tensor(noisy_img)
     return noisy_img
 
 def calc_IoU(res_mask, target, sum_I, sum_U):
-    # masks: (N,H,W) 0,1
-    # pred: (N)   0-149
-    # target: (H,W) 0-149
     target_infos = torch.unique(target).cpu().numpy()
-    # 枚举target_info, 取出对应pred对应的mask
-    # print(target_infos)
-    # print(torch.unique(res_mask).cpu().numpy())
-    # u = fk
     for target_info in target_infos:
         gt_now = target == target_info
         pred_now = res_mask == target_info
@@ -417,22 +360,6 @@ def calc_IoU(res_mask, target, sum_I, sum_U):
         U = torch.sum(torch.logical_or(pred_now, gt_now))
         sum_I[target_info] += I
         sum_U[target_info] += U
-    # for i in range(len(masks)):
-    #     mask = masks[i]
-    #     pred_idx = pred[i]
-    #     # 取出target中为pred_idx的部分
-    #     target_mask = target == pred_idx
-    #     I = torch.sum(torch.logical_and(mask, target_mask))
-    #     U = torch.sum(torch.logical_or(mask, target_mask))
-        
-    #     # if U == 0:
-    #     #     this_iou = 0.0
-    #     # else:
-    #     #     this_iou = I * 1.0 / U
-    #     # I, U = I, U
-
-    #     sum_I[pred_idx-1] += I
-    #     sum_U[pred_idx-1] += U
     return sum_I, sum_U
 
 def Compute_IoU(pred, target, cum_I, cum_U, mean_IoU=[]):
@@ -466,114 +393,6 @@ def AisPartOfB(result_seg,this_seg):
         return True
     else:
         return False
-
-def show_masks3(anns, anns2, anns3):
-    if type(anns) ==  torch.Tensor:
-        if len(anns.shape) == 2:
-            anns = anns.unsqueeze(0)
-        anns = anns.cpu().numpy() # Tensor를 cpu로 옮기고 numpy로 변환
-    else:
-        anns = anns[None,:,:]
-    if type(anns2) ==  torch.Tensor:
-        if len(anns2.shape) == 2:
-            anns2 = anns2.unsqueeze(0)
-        anns2 = anns2.cpu().numpy() # Tensor를 cpu로 옮기고 numpy로 변환
-    else:
-        anns2 = anns2[None,:,:]
-    if type(anns3) ==  torch.Tensor:
-        if len(anns3.shape) == 2:
-            anns3 = anns3.unsqueeze(0)
-        anns3 = anns3.cpu().numpy() # Tensor를 cpu로 옮기고 numpy로 변환
-    else:
-        anns3 = anns3[None,:,:]
-    
-    # if type(targets) ==  torch.Tensor: 
-    #     targets = targets.bool().cpu().numpy()[0] # Tensor를 cpu로 옮기고 numpy로 변환
-     
-    if len(anns) == 0:
-        return
-
-    h,w = anns.shape[-2:]
-    
-    ax = plt.gca() # 현재의 axis 가져오기
-    ax.set_autoscale_on(False)
-
-    # sorted_anns = sorted(anns, key=lambda x: -np.sum(x)) # mask size 오름차순으로 정렬
-
-    img = np.ones((h, w*4, 4)) # 빈 이미지 생성
-    img[:,:,3] = 0 
-
-    for ann,ann2,ann3 in zip(anns,anns2,anns3):
-        color_mask = np.concatenate([np.random.random(3), [0.7]]) # 마스크 랜덤 색상 지정 및 투명도 설명
-        img[:, w:2*w, :][ann] = color_mask # 빈 이미지에 마스크 그려넣기
-        img[:, 2*w:3*w, :][ann2] = color_mask
-        img[:, 3*w:4*w, :][ann3] = color_mask
-    ax.imshow(img)
-
-def show_masks2(anns, targets):
-    if type(anns) ==  torch.Tensor:
-        if len(anns.shape) == 2:
-            anns = anns.unsqueeze(0)
-        anns = anns.cpu().numpy() # Tensor를 cpu로 옮기고 numpy로 변환
-    else:
-        anns = anns[None,:,:]
-    if type(targets) ==  torch.Tensor:
-        if len(targets.shape) == 2:
-            targets = targets.unsqueeze(0)
-        targets = targets.cpu().numpy() # Tensor를 cpu로 옮기고 numpy로 변환
-    else:
-        targets = targets[None,:,:]
-    
-    # if type(targets) ==  torch.Tensor: 
-    #     targets = targets.bool().cpu().numpy()[0] # Tensor를 cpu로 옮기고 numpy로 변환
-     
-    if len(anns) == 0:
-        return
-
-    h,w = anns.shape[-2:]
-    
-    ax = plt.gca() # 현재의 axis 가져오기
-    ax.set_autoscale_on(False)
-
-    # sorted_anns = sorted(anns, key=lambda x: -np.sum(x)) # mask size 오름차순으로 정렬
-
-    img = np.ones((h, w*2, 4)) # 빈 이미지 생성
-    img[:,:,3] = 0 
-
-    for ann,target in zip(anns,targets):
-        color_mask = np.concatenate([np.random.random(3), [0.7]]) # 마스크 랜덤 색상 지정 및 투명도 설명
-        img[:, :w, :][ann] = color_mask # 빈 이미지에 마스크 그려넣기
-        img[:, w:, :][target] = color_mask
-    ax.imshow(img)
-
-def show_masks1(anns):
-    if type(anns) ==  torch.Tensor:
-        if len(anns.shape) == 2:
-            anns = anns.unsqueeze(0)
-        anns = anns.cpu().numpy() # Tensor를 cpu로 옮기고 numpy로 변환
-    else:
-        anns = anns[None,:,:]
-    
-    # if type(targets) ==  torch.Tensor: 
-    #     targets = targets.bool().cpu().numpy()[0] # Tensor를 cpu로 옮기고 numpy로 변환
-     
-    if len(anns) == 0:
-        return
-
-    h,w = anns.shape[-2:]
-    
-    ax = plt.gca() # 현재의 axis 가져오기
-    ax.set_autoscale_on(False)
-
-    # sorted_anns = sorted(anns, key=lambda x: -np.sum(x)) # mask size 오름차순으로 정렬
-
-    img = np.ones((h, w*2, 4)) # 빈 이미지 생성
-    img[:,:,3] = 0 
-
-    for ann in anns:
-        color_mask = np.concatenate([np.random.random(3), [0.7]]) # 마스크 랜덤 색상 지정 및 투명도 설명
-        img[:, w:2*w, :][ann] = color_mask # 빈 이미지에 마스크 그려넣기
-    ax.imshow(img)
 
 def default_argument_parser(epilog=None):
     """
