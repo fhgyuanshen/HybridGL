@@ -237,11 +237,11 @@ def main(args, Height, Width):
     overall = cum_I * 100.0 / cum_U
     mean_IoU = torch.mean(torch.tensor(m_IoU)) * 100.0
 
-    f.write(f'\npure hybridgl :{overall:.2f} / {mean_IoU:.2f}')  
+    f.write(f'\npure hybridgl: {overall:.2f} / {mean_IoU:.2f}')  
     overall_final = cum_I_final * 100.0 / cum_U_final
     mean_IoU_final = torch.mean(torch.tensor(m_IoU_final)) * 100.0
 
-    f.write(f'\nhybridgl w/ spatial guidance{overall_final:.2f} / {mean_IoU_final:.2f}')
+    f.write(f'\nhybridgl w/ spatial guidance: {overall_final:.2f} / {mean_IoU_final:.2f}')
     f.close()
 
 
