@@ -19,12 +19,6 @@ class CLIPViTFM(nn.Module):
         elif model_name == 'ViT-B/16':
             self.last_layer = 10
             self.num_heads = 12
-        # elif model_name == 'ViTB16_quickgelu':
-        #     self.last_layer = 10
-        #     self.num_heads = 12
-        elif model_name == 'ViT-L/14':
-            self.last_layer = 23
-            self.num_heads = 16
 
         self.model, _ = clip.load(model_name)
 
@@ -115,11 +109,9 @@ class CLIPViTFM(nn.Module):
         # pred_masks =  [46, H, W], Torch.bool
         if size is not None:
             pred_masks = TF.resize(pred_masks, size=(size, size))  # [46,7,7]
-        # pred_masks = pred_masks.type(torch.bool)
         N, H, W = pred_masks.size()
         attn_masks = torch.ones((N * self.num_heads, H*W+1, H*W+1), dtype=torch.bool).to(self.device)
         attn_masks[:, 0, 1:] = pred_masks[:,None,:,:].expand(-1,self.num_heads,-1,-1).reshape(N * self.num_heads, -1)
-        # attn_masks[:, 1:, 0] = pred_masks[:,None,:,:].repeat(1,self.num_heads,1,1).view(N * self.num_heads, -1)
         return ~attn_masks
     
     def forward(self, local_imgs, global_imgs, pred_masks, masking_block=None, fusion_mode='G2L'):
@@ -133,13 +125,10 @@ class CLIPViTFM(nn.Module):
 
         if fusion_mode == 'crop': # [1, 512]
             x = vit(x)
-            # print(x[:,0,:].shape)
             return x[:, 0, :]
 
         x = vit.conv1(x)  # shape = [*, width, grid, grid]
-        # shape = [*, width, grid ** 2]
 
-        # size = x.shape[2], x.shape[3]
         x = x.reshape(x.shape[0], x.shape[1], -1)
 
         x = x.permute(0, 2, 1)  # shape = [*, grid ** 2, width]
@@ -147,7 +136,6 @@ class CLIPViTFM(nn.Module):
                                                                      dtype=x.dtype, device=x.device), x], dim=1)  # shape = [*, grid ** 2 + 1, width]
 
         x = x + vit.positional_embedding.to(x.dtype)
-        # x = x + self.original_pos_embedding
         x = vit.ln_pre(x)
 
         x = x.permute(1, 0, 2)  # NLD -> LND
@@ -170,8 +158,6 @@ class CLIPViTFM(nn.Module):
         assert size * size == L
 
         pred_masks = TF.resize(pred_masks.type(torch.float32), (size, size))
-        # pred_masks = torch.stack([pred_mask.view(size,224//size,size,224//size).max(dim=1)[0].max(dim=2)[0] for pred_mask in pred_masks])
-
         if fusion_mode == 'token_masking':
             for block_idx, resblock in enumerate(vit.transformer.resblocks):
                 if block_idx >= masking_block:
@@ -237,7 +223,6 @@ class CLIPViTFM(nn.Module):
                     if self.model.visual.proj is not None:
                         x2 = x2 @ self.model.visual.proj # [46, 512] 
                     return x2
-                    # break
 
         elif fusion_mode == 'G2L':
             attn_mask = self.make_attn_mask(pred_masks)
