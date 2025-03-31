@@ -7,8 +7,9 @@ import torch
 import cv2
 
 class PhraseCutDataset(data.Dataset):
-    def __init__(self, split='val', unseen_mode=False, seen_mode=False):
+    def __init__(self, split='val', preprocessor = None, unseen_mode=False, seen_mode=False):
         self.refvg_loader = RefVGLoader(split=split)
+        self.preprocessor = preprocessor
         self.refvg_loader.img_ids.sort()
         self.COCO_CLASSES = ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus',
                         'train', 'truck', 'boat', 'traffic light', 'fire hydrant',
@@ -36,11 +37,14 @@ class PhraseCutDataset(data.Dataset):
         img_ref_data = self.refvg_loader.get_img_ref_data(image_id)
         image_id = img_ref_data['image_id']
         image_dir = f'./PhraseCutDataset/data/VGPhraseCut_v0/images/{image_id}.jpg'
-        
-        sam_img = cv2.imread(image_dir)
-        sam_img = cv2.cvtColor(sam_img, cv2.COLOR_BGR2RGB)
 
         image = Image.open(image_dir).convert('RGB')
+        if self.preprocessor is not None:
+            tensor_img = self.preprocessor(image)
+        else:
+            tensor_img = torch.tensor(np.array(image))
+            
+        sam_img = np.array(image)
 
         img = T.Resize(800)(image)
         img = T.ToTensor()(img)
@@ -87,7 +91,7 @@ class PhraseCutDataset(data.Dataset):
             return a
 
         data = []
-        data.append(dict(image=img,sam_img=sam_img, width=width, height=height, img_id=image_id, gt_masks=gt_masks, phrase=phrases, cat_name=img_ref_data['img_ins_cats']))
+        data.append(dict(image=img, tensor_img = tensor_img, sam_img=sam_img, width=width, height=height, img_id=image_id, gt_masks=gt_masks, phrase=phrases, cat_name=img_ref_data['img_ins_cats']))
 
         return data
 
