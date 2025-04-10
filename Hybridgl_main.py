@@ -6,6 +6,7 @@ import spacy
 import numpy as np
 import tqdm
 import cv2
+import os
 
 # refer dataset
 from data.dataset_refer_bert import ReferDataset
@@ -229,6 +230,8 @@ def main(args, Height, Width):
             _, m_IoU_final, cum_I_final, cum_U_final = Compute_IoU(result_seg_final, target, cum_I_final, cum_U_final, m_IoU_final)
 
 
+    if not os.path.exists(f'./result_log'):
+        os.mkdir(f'./result_log')
     f = open(f'./result_log/result_log_{args.dataset}_{args.split}.txt', 'a')
     f.write(f'\n\n fusion_mode={fusion_mode} '
             f'\nDataset: {args.dataset} / {args.split} / {args.splitBy}'
@@ -243,6 +246,12 @@ def main(args, Height, Width):
 
     f.write(f'\nhybridgl w/ spatial guidance: {overall_final:.2f} / {mean_IoU_final:.2f}')
     f.close()
+    
+    print(f'\n\n fusion_mode={fusion_mode} '
+          f'\nDataset: {args.dataset} / {args.split} / {args.splitBy}'
+          f'\nOverall IoU / mean IoU'
+          f'\npure hybridgl: {overall:.2f} / {mean_IoU:.2f}'
+          f'\nhybridgl w/ spatial guidance: {overall_final:.2f} / {mean_IoU_final:.2f}')
 
 
 if __name__ == "__main__":
