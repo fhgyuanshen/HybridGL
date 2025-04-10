@@ -6,8 +6,23 @@
 
 # Environment Setup
 ```
-conda env create -f environment.yaml
+# Create&Activate conda env
+conda create -n hybridgl python=3.10  
 conda activate hybridgl
+
+# Install Pytorch 2.0.1+cu117 version
+conda install pytorch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 pytorch-cuda=11.7 -c pytorch -c nvidia
+# Install spacy for language processing
+conda install -c conda-forge spacy=3.7.6 einops=0.8.0
+pip install pydantic==2.9.1
+python -m spacy download en_core_web_lg
+
+# Install required packages
+pip install opencv-python==4.10.0.84 matplotlib==3.9.2 markupsafe==2.1.5 h5py scikit-image==0.24.0 pycocotools==2.0.8
+# Install GEM, make sure the open_clip version is 2.24.0
+pip install gem_torch
+pip install open_clip_torch==2.24.0
+
 cd third_parth
 cd modified_CLIP
 pip install -e .
