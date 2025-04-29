@@ -8,7 +8,7 @@ import cv2
 from PIL import Image
 
 from model.backbone import CLIPViTFM
-from utils import default_argument_parser, Compute_IoU, extract_noun_phrase, gen_dir_mask, extract_dir_phrase, extract_rela_word, relation_boxes, extract_nouns, show_masks1
+from utils import Compute_IoU, extract_noun_phrase, gen_dir_mask, extract_dir_phrase, extract_rela_word, relation_boxes, extract_nouns
 
 import gem
 from segment_anything import sam_model_registry, SamAutomaticMaskGenerator
