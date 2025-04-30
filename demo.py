@@ -17,7 +17,7 @@ Height, Width = 224, 224
 
 
 
-def main(Height, Width, img_dir, output_dir, ref_text):
+def main(Height, Width, img_path, output_path, ref_text):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     if device == 'cuda':
         print("now using cuda: ",torch.version.cuda)
@@ -55,7 +55,7 @@ def main(Height, Width, img_dir, output_dir, ref_text):
 
     ########################## load data ##########################
 
-    img = Image.open(img_dir).convert("RGB")
+    img = Image.open(img_path).convert("RGB")
     tensor_img = preprocess(img).unsqueeze(0).to(device)
     
     sam_img = np.array(img)
@@ -217,14 +217,14 @@ def main(Height, Width, img_dir, output_dir, ref_text):
     result_seg_final[:, :, 1] = (255 - result_seg_final[:, :, 1])*result_seg_final[:,:,1]
 
     result = cv2.addWeighted(save_img, 1, result_seg_final, 0.7, 0.)
-    cv2.imwrite(output_dir, result)
+    cv2.imwrite(output_path, result)
 
 
 if __name__ == "__main__":
-    img_dir = "path2image"
-    output_dir = "result.jpg"
+    img_path = "path2image.jpg"
+    output_path = "result.jpg"
     
     ref_text = "the cat on left"
     with torch.no_grad():
-        main(Height, Width, img_dir,output_dir , ref_text)
+        main(Height, Width, img_path, output_path, ref_text)
 
