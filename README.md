@@ -74,11 +74,12 @@ Our code is based on the following open-source projects: [CLIP](https://github.c
 # Citation
 ```
 bibtex
-@inproceedings{liu2025hybrid,
-  title={Hybrid Global-Local Representation with Augmented Spatial Guidance for Zero-Shot Referring Image Segmentation},
-  author={Liu, Ting and Li, Siyuan},
-  booktitle={Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
-  year={2025},
-  pages={1--10}
+@InProceedings{Liu_2025_CVPR,
+    author    = {Liu, Ting and Li, Siyuan},
+    title     = {Hybrid Global-Local Representation with Augmented Spatial Guidance for Zero-Shot Referring Image Segmentation},
+    booktitle = {Proceedings of the Computer Vision and Pattern Recognition Conference (CVPR)},
+    month     = {June},
+    year      = {2025},
+    pages     = {29634-29643}
 }
 ```
