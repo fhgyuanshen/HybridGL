@@ -221,6 +221,8 @@ def main(args, Height, Width):
                 score_gem_list.append(torch.Tensor([score_gemtmp]))
             score_gem = torch.stack(score_gem_list,dim=0)
             score_gem=score_gem.to(device)
+            # score_gem = softmax0(score_gem) 
+            # Uncomment the above line when reproducing the "relation + coherence" ablation in Table 5.
 
             for idx_i in range(k1):      
                 topscores[idx_i]=topscores[idx_i] * (1 - alpha) + alpha * score_gem[maxidxs[idx_i]][0]
